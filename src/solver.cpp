@@ -1,14 +1,19 @@
 #pragma once
 #include "particle.hpp"
+#include "help.hpp"
 #include <SFML/Graphics/RenderWindow.hpp>
 #include <SFML/System/Vector2.hpp>
 #include <SFML/System/Vector3.hpp>
 #include <cmath>
+#include <cstdint>
+
+#define DEFAULT_GRAVITY 500.0f
 
 class Solver{
     private:
         std::vector<Particle> particles;
         sf::Vector2f boundary_pos;
+        sf::Vector2f gravity;
         float boundary_radius;
 
 
@@ -37,7 +42,7 @@ class Solver{
             first_circle.setScale({1.0f, 1.0f});
             window.draw(first_circle);
         }
-        void applyBoundary(Particle& particle) {
+        void applyBoundary(Particle& particle, float dt) {
                 float px = particle.getPosition().x;
                 float py = particle.getPosition().y;
 
@@ -51,28 +56,54 @@ class Solver{
                     const sf::Vector2f perp = {-n.y, n.x};
                     const sf::Vector2f vel = particle.getVelocity();
                     particle.setPosition(sf::Vector2f(bx, by)- n * (bound.z - particle.getRadius()));
-                    particle.setVelocity(2.0f * (vel.x * perp.x + vel.y * perp.y) * perp - vel, 1.0f);
+                    particle.setVelocity(2.0f * (vel.x * perp.x + vel.y * perp.y) * perp - vel, 0.8f);
                 }
         }
         void applyGravity(Particle& particle){
-            particle.accelerate({0.0f, GRAVITY});
+            particle.accelerate(this->gravity);
         }
     public:
+        void setLeftGravity() {
+            this->gravity = {-DEFAULT_GRAVITY, 0.f};
+        }
+        void setRightGravity() {
+            this->gravity = {DEFAULT_GRAVITY, 0.f};
+        }
+        void setTopGravity() {
+            this->gravity = {0.f, -DEFAULT_GRAVITY};
+        }
+        void setBottomGravity(){
+            this->gravity = {0.f, DEFAULT_GRAVITY};
+        }
+
         Solver (): 
             particles{},  
             boundary_pos{0.0f, 0.0f},
-            boundary_radius(0)
+            boundary_radius(0),
+            gravity({0.0f, DEFAULT_GRAVITY})
         {}
         std::vector<Particle>& getObjects() { return particles; }
+
+        void new_ball(sf::Vector2f mouse_pos, sf::Color color){ 
+            addObject(Particle(
+                        mouse_pos,
+                        mouse_pos,
+                sf::Vector2f(0,0), 
+                sf::Vector2f(0, 0), 
+                10.0f, 
+                color)
+            );
+        }
 
         void addObject(const Particle& particle){
             particles.push_back(particle);
         }
         void update(float dt){
+            collideParticles(dt);
             for(Particle& particle: particles){
                 for(int i = 0; i < SUB_STEP_NUM; i++){
                     applyGravity(particle);
-                    applyBoundary(particle);
+                    applyBoundary(particle, dt);
                     particle.updateParticle(dt);
                 }
             }
@@ -103,6 +134,37 @@ class Solver{
            for(Particle& particle : getObjects()){
                pushObject(pos, particle);
            } 
+        }
+        int objectsNum() const {
+            return ( &( this->particles ) )->size();
+        }
+        void collideParticles(float dt){
+            for(int i = 0; i < objectsNum(); i++){
+                for(int j = 0; j < objectsNum(); j++){
+                    if(i == j) continue; //same object, don't count it
+                    Particle& p1 = this->getObjects()[i];
+                    Particle& p2 = this->getObjects()[j];
+
+                    float distance_cent = eucl_distance(p1.getPosition(), p2.getPosition());  
+                    float min_distance = p1.getRadius() + p2.getRadius();
+                    if(distance_cent < min_distance){
+                        sf::Vector2f n = p1.getPosition() - p2.getPosition();
+                        float length_n = std::sqrt(n.x * n.x + n.y * n.y);
+
+                        if(0 == length_n) continue;
+
+                        n = n * (1 / length_n);
+
+                        float total_mass = p1.getRadius() + p2.getRadius();
+                        float mass_ration = ( p1.getRadius() ) / total_mass;
+
+                        float delta = 0.1f * (min_distance - distance_cent);
+                        
+                        p1.setPosition(p1.getPosition() + ( n * (1 - mass_ration) * delta ));
+                        p2.setPosition(p2.getPosition() - ( n * (mass_ration) * delta ));
+                    }
+                }
+            }
         }
         void render(sf::RenderWindow& window) const{
             this->drawBoundary(window);

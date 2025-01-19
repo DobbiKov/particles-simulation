@@ -7,7 +7,7 @@
 #include <vector>
 #include <iostream>
 
-#define GRAVITY 1000.0f
+#define GRAVITY 300.0f
 #define SUB_STEP_NUM 8
 
 class Particle{
